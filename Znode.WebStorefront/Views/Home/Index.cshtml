@@ -1,0 +1,222 @@
+﻿@{
+    ViewData["Title"] = "Znode Enterprise Storefront";
+}
+
+<div class="container py-4">
+    <div class="text-center mb-4">
+        <h1 class="display-6 fw-bold">Znode Storefront & NetSuite ERP</h1>
+        <p class="text-muted">Direct SQL Server & Stored Procedure Execution Demo</p>
+    </div>
+
+    <!-- 1. Real-Time SQL Server Inventory Table -->
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
+            <span><strong>1. Real-Time SQL Server Inventory (sp_GetAllInventory)</strong></span>
+            <button class="btn btn-sm btn-outline-light" onclick="loadAllInventory()">Refresh List</button>
+        </div>
+        <div class="card-body">
+            <table class="table table-bordered table-striped" id="inventoryTable">
+                <thead class="table-secondary">
+                    <tr>
+                        <th>ID</th>
+                        <th>SKU</th>
+                        <th>NetSuite Item ID</th>
+                        <th>Available Qty</th>
+                        <th>On Hand Qty</th>
+                        <th>Warehouse</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="inventoryTableBody">
+                    <tr><td colspan="7" class="text-center">Loading database records...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="row g-4">
+        <!-- 2. Upsert Inventory Form -->
+        <div class="col-md-6">
+            <div class="card shadow-sm h-100">
+                <div class="card-header bg-primary text-white fw-semibold">
+                    2. Upsert Inventory to Database (sp_UpsertNetSuiteInventory)
+                </div>
+                <div class="card-body">
+                    <div class="mb-2">
+                        <label class="form-label">SKU</label>
+                        <input type="text" id="upsertSku" class="form-control" value="MONITOR-LG-4K" />
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label">NetSuite Item ID</label>
+                        <input type="text" id="upsertNsId" class="form-control" value="NS-ITEM-8810" />
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-2">
+                            <label class="form-label">Available Qty</label>
+                            <input type="number" id="upsertQtyAvail" class="form-control" value="30" />
+                        </div>
+                        <div class="col-md-6 mb-2">
+                            <label class="form-label">On Hand Qty</label>
+                            <input type="number" id="upsertQtyHand" class="form-control" value="35" />
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Warehouse Location</label>
+                        <input type="text" id="upsertWarehouse" class="form-control" value="WH-TEXAS-01" />
+                    </div>
+                    <button class="btn btn-success w-100" onclick="saveInventory()">Save / Upsert Record</button>
+                    <div id="upsertResult" class="alert alert-success mt-3 d-none"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 3. Checkout & Payment Audit Form -->
+        <div class="col-md-6">
+            <div class="card shadow-sm h-100">
+                <div class="card-header bg-success text-white fw-semibold">
+                    3. Checkout & Payment Audit (sp_InsertPaymentTransaction)
+                </div>
+                <div class="card-body">
+                    <div class="mb-2">
+                        <label class="form-label">Select Payment Gateway</label>
+                        <select id="payGateway" class="form-select">
+                            <option value="Stripe">Stripe</option>
+                            <option value="AuthorizeNet">Authorize.Net</option>
+                        </select>
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label">Order Amount ($ USD)</label>
+                        <input type="number" id="payAmount" class="form-control" value="249.50" />
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label">Mock Card Token</label>
+                        <input type="text" id="payToken" class="form-control" value="tok_visa_valid" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Customer Email</label>
+                        <input type="email" id="payEmail" class="form-control" value="customer@company.com" />
+                    </div>
+                    <button class="btn btn-primary w-100" onclick="executePayment()">Process & Record Transaction</button>
+                    <div id="paymentResult" class="alert alert-info mt-3 d-none">
+                        <pre id="paymentResultJson" class="mb-0 small"></pre>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // FIXED: Now points directly to your API port 5166
+    const API_BASE = "https://localhost:7104/api/v1";
+
+    async function loadAllInventory() {
+        try {
+            const res = await fetch(`${API_BASE}/inventory?page=1&pageSize=50`);
+            const json = await res.json();
+            const tbody = document.getElementById("inventoryTableBody");
+            tbody.innerHTML = "";
+
+            if (json.success && json.data && json.data.length > 0) {
+                json.data.forEach(item => {
+                    const row = `
+                        <tr>
+                            <td>${item.inventoryId}</td>
+                            <td><strong>${item.sku}</strong></td>
+                            <td>${item.netSuiteItemId}</td>
+                            <td><span class="badge bg-success">${item.quantityAvailable}</span></td>
+                            <td>${item.quantityOnHand}</td>
+                            <td>${item.warehouseLocation}</td>
+                            <td>
+                                <button class="btn btn-sm btn-danger" onclick="deleteItem('${item.sku}')">Delete</button>
+                            </td>
+                        </tr>`;
+                    tbody.innerHTML += row;
+                });
+            } else {
+                tbody.innerHTML = `<tr><td colspan="7" class="text-center text-muted">No records found.</td></tr>`;
+            }
+        } catch (err) {
+            console.error("Fetch Error:", err);
+            alert("Error connecting to API at " + API_BASE + ". Please ensure port 5166 has the SSL certificate accepted in your browser.");
+        }
+    }
+
+    async function saveInventory() {
+        const payload = {
+            sku: document.getElementById("upsertSku").value.trim(),
+            netSuiteItemId: document.getElementById("upsertNsId").value.trim(),
+            quantityAvailable: parseFloat(document.getElementById("upsertQtyAvail").value),
+            quantityOnHand: parseFloat(document.getElementById("upsertQtyHand").value),
+            warehouseLocation: document.getElementById("upsertWarehouse").value.trim()
+        };
+
+        try {
+            const res = await fetch(`${API_BASE}/inventory/sync`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload)
+            });
+            const json = await res.json();
+
+            if (json.success) {
+                const box = document.getElementById("upsertResult");
+                box.innerText = `Successfully saved SKU: ${json.data.sku} with ID: ${json.data.inventoryId}`;
+                box.classList.remove("d-none");
+                loadAllInventory();
+            } else {
+                alert(json.errors.join(", "));
+            }
+        } catch (err) {
+            console.error(err);
+            alert("Failed to save inventory.");
+        }
+    }
+
+    async function deleteItem(sku) {
+        if (!confirm(`Are you sure you want to delete SKU: ${sku}?`)) return;
+
+        try {
+            const res = await fetch(`${API_BASE}/inventory/${sku}`, { method: "DELETE" });
+            const json = await res.json();
+            if (json.success) {
+                loadAllInventory();
+            } else {
+                alert(json.message);
+            }
+        } catch (err) {
+            console.error(err);
+            alert("Failed to delete item.");
+        }
+    }
+
+    async function executePayment() {
+        const payload = {
+            gatewayType: document.getElementById("payGateway").value,
+            amount: parseFloat(document.getElementById("payAmount").value),
+            currency: "USD",
+            cardTokenOrNonce: document.getElementById("payToken").value,
+            orderNumber: "ORD-" + Math.floor(100000 + Math.random() * 900000),
+            customerEmail: document.getElementById("payEmail").value
+        };
+
+        try {
+            const res = await fetch(`${API_BASE}/payment/process`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload)
+            });
+            const json = await res.json();
+
+            const box = document.getElementById("paymentResult");
+            const txt = document.getElementById("paymentResultJson");
+            txt.innerText = JSON.stringify(json, null, 2);
+            box.classList.remove("d-none");
+        } catch (err) {
+            console.error(err);
+            alert("Payment failed to process via API.");
+        }
+    }
+
+    window.onload = loadAllInventory;
+</script>

@@ -1,0 +1,6 @@
+@Znode.Custom.Api_HostAddress = http://localhost:5166
+
+GET {{Znode.Custom.Api_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
